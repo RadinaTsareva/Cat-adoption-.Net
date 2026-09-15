@@ -1,13 +1,5 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using CatAdoption.Api.Data;
-using CatAdoption.Api.DTOs;
-using CatAdoption.Api.Models;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 
 namespace CatAdoption.Api.Controllers;
 
@@ -15,9 +7,9 @@ namespace CatAdoption.Api.Controllers;
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
+    private readonly IConfiguration _configuration;
     private readonly ApplicationDbContext _context;
     private readonly PasswordHasher<User> _passwordHasher;
-    private readonly IConfiguration _configuration;
 
     public AuthController(
         ApplicationDbContext context,
@@ -35,12 +27,10 @@ public class AuthController : ControllerBase
             .FirstOrDefaultAsync(u => u.Email == request.Email);
 
         if (existingUser != null)
-        {
             return Conflict(new
             {
                 message = "User with this email already exists."
             });
-        }
 
         var user = new User
         {
@@ -71,12 +61,10 @@ public class AuthController : ControllerBase
             .FirstOrDefaultAsync(u => u.Email == request.Email);
 
         if (user == null)
-        {
             return Unauthorized(new
             {
                 message = "Invalid email or password."
             });
-        }
 
         var passwordResult = _passwordHasher.VerifyHashedPassword(
             user,
@@ -84,12 +72,10 @@ public class AuthController : ControllerBase
             request.Password);
 
         if (passwordResult == PasswordVerificationResult.Failed)
-        {
             return Unauthorized(new
             {
                 message = "Invalid email or password."
             });
-        }
 
         var claims = new[]
         {

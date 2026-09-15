@@ -13,6 +13,8 @@ public class User
     public string PasswordHash { get; set; } = string.Empty;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    
+
     public string? City { get; set; }
+
+    public ICollection<Cat> Cats { get; set; } = new List<Cat>();
 }

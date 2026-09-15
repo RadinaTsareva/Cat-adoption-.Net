@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cat-adoption-postgres
+    environment:
+      POSTGRES_DB: cat_adoption
+      POSTGRES_USER: catadmin
+      POSTGRES_PASSWORD: catadmin_pwd
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U catadmin -d cat_adoption"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: CatAdoption.Api/Dockerfile
+    container_name: cat-adoption-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=cat_adoption;Username=catadmin;Password=catadmin_pwd
+      Jwt__Key: CatAdoption-Development-Secret-Key-Change-This-123456789
+      Jwt__Issuer: CatAdoption.Api
+      Jwt__Audience: CatAdoption.Client
+      Jwt__ExpiresInMinutes: 60
+    ports:
+      - "5154:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy

@@ -1,0 +1,15 @@
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: cat-adoption-postgres-test
+    environment:
+      POSTGRES_DB: cat_adoption_test
+      POSTGRES_USER: catadoption_test
+      POSTGRES_PASSWORD: catadoption_test_pwd
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U catadoption_test -d cat_adoption_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

@@ -7,6 +7,8 @@
 # Build output
 bin/
 obj/
+**/bin/
+**/obj/
 
 # Local DB / secrets
 *.db
