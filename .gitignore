@@ -1,0 +1,15 @@
+# IDE
+.idea/
+.vs/
+*.user
+*.suo
+
+# Build output
+bin/
+obj/
+
+# Local DB / secrets
+*.db
+*.sqlite
+*.pdb
+appsettings.Development.json
