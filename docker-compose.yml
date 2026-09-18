@@ -31,3 +31,16 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+
+  frontend:
+    build:
+      context: ./cat-adoption-web
+      dockerfile: Dockerfile
+    container_name: cat-adoption-web
+    environment:
+      VITE_API_PROXY_TARGET: http://api:8080
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+

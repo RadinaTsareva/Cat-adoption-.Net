@@ -15,7 +15,6 @@ public class UsersController : ControllerBase
     }
 
     [HttpGet("me")]
-    [HttpGet("me")]
     public async Task<IActionResult> GetMe()
     {
         var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -36,6 +35,7 @@ public class UsersController : ControllerBase
             user.FirstName,
             user.LastName,
             user.Email,
+            user.Role,
             user.City,
             user.CreatedAt
         });

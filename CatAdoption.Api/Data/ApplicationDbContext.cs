@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+
 namespace CatAdoption.Api.Data;
 
 public class ApplicationDbContext : DbContext

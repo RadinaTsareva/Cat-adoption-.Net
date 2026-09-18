@@ -1,3 +1,5 @@
+using CatAdoption.Api.Seeding;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Controllers
@@ -6,16 +8,15 @@ builder.Services.AddControllers();
 // CORS - Simple and works!
 builder.Services.AddCors(options =>
 {
-    options.AddDefaultPolicy(builder =>
+    options.AddDefaultPolicy(policy =>
     {
-        builder
-            .AllowAnyOrigin()
+        policy
+            .WithOrigins("http://localhost:3000")
             .AllowAnyMethod()
             .AllowAnyHeader();
     });
 });
 
-// ...existing code...
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -71,7 +72,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-if (!app.Environment.IsDevelopment())
+if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Test"))
 {
     app.UseHttpsRedirection();
 }
@@ -83,4 +84,21 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-app.Run();
+// Seed data
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    if (app.Environment.IsEnvironment("Test"))
+    {
+        await db.Database.EnsureCreatedAsync();
+    }
+    else
+    {
+        await db.Database.MigrateAsync();
+
+        await AppSeedData.EnsureSeedUsersAsync(db);
+        await AppSeedData.EnsureInitialCatsAsync(db);
+    }
+}
+
+await app.RunAsync();

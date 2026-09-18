@@ -21,6 +21,7 @@ public class CatsController : ControllerBase
 
 
     [HttpPost]
+    [Authorize(Roles = UserRoles.Admin + "," + UserRoles.CareGiver)]
     public async Task<IActionResult> CreateCat()
     {
         var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -191,7 +192,7 @@ public class CatsController : ControllerBase
             return NotFound();
         }
 
-        if (cat.UserId != userId)
+        if (cat.UserId != userId && !User.IsInRole(UserRoles.Admin))
         {
             return Forbid();
         }
@@ -235,7 +236,7 @@ public class CatsController : ControllerBase
             return NotFound();
         }
 
-        if (cat.UserId != userId)
+        if (cat.UserId != userId && !User.IsInRole(UserRoles.Admin))
         {
             return Forbid();
         }

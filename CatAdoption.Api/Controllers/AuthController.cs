@@ -25,7 +25,6 @@ public class AuthController : ControllerBase
     public IActionResult Options() => Ok();
 
     [HttpPost("register")]
-    [HttpPost("register")]
     public async Task<IActionResult> Register(RegisterRequest request)
     {
         var existingUser = await _context.Users
@@ -41,7 +40,8 @@ public class AuthController : ControllerBase
         {
             FirstName = request.FirstName,
             LastName = request.LastName,
-            Email = request.Email
+            Email = request.Email,
+            Role = NormalizeRole(request.Role)
         };
 
         user.PasswordHash = _passwordHasher.HashPassword(
@@ -55,7 +55,8 @@ public class AuthController : ControllerBase
         return Created("", new
         {
             message = "User registered successfully.",
-            userId = user.Id
+            userId = user.Id,
+            role = user.Role
         });
     }
 
@@ -87,6 +88,10 @@ public class AuthController : ControllerBase
             new Claim(
                 ClaimTypes.NameIdentifier,
                 user.Id.ToString()),
+
+            new Claim(
+                ClaimTypes.Role,
+                user.Role),
 
             new Claim(
                 JwtRegisteredClaimNames.Email,
@@ -122,7 +127,19 @@ public class AuthController : ControllerBase
         return Ok(new
         {
             message = "Login successful.",
-            token = tokenString
+            token = tokenString,
+            userId = user.Id,
+            role = user.Role
         });
+    }
+
+    private static string NormalizeRole(string? requestedRole)
+    {
+        if (string.Equals(requestedRole, UserRoles.CareGiver, StringComparison.OrdinalIgnoreCase))
+        {
+            return UserRoles.CareGiver;
+        }
+
+        return UserRoles.PetAdopter;
     }
 }

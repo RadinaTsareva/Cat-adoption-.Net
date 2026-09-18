@@ -4,7 +4,7 @@ import './App.css'
 const API_URL = '/api'
 
 export default function App() {
-  const [view, setView] = useState('login') // login, register, cats, newCat
+  const [view, setView] = useState('cats') // login, register, cats, newCat, admin
   const [token, setToken] = useState(localStorage.getItem('token'))
   const [user, setUser] = useState(localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')) : null)
   const [cats, setCats] = useState([])
@@ -14,17 +14,72 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [imageFile, setImageFile] = useState(null)
+  const [adminUsers, setAdminUsers] = useState([])
+  const [adminLoading, setAdminLoading] = useState(false)
+  const [adminError, setAdminError] = useState('')
+  const isAdmin = user?.role === 'admin'
+  const canCreateListings = isAdmin || user?.role === 'care-giver'
+  const canDeleteCats = isAdmin || Boolean(user?.id)
 
   useEffect(() => {
-    if (token && user) {
+    const bootstrapAuth = async () => {
       setView('cats')
-      loadCats()
-    } else {
-      setView('login')
+      loadCats(1)
+
+      if (!token) {
+        setUser(null)
+        return
+      }
+
+      const currentUser = await loadCurrentUser(token)
+      if (!currentUser) {
+        handleLogout()
+      }
     }
+
+    bootstrapAuth()
   }, [])
 
+  useEffect(() => {
+    if (view === 'admin' && token && isAdmin) {
+      loadAdminUsers()
+    }
+  }, [view, token, isAdmin])
+
   // AUTH FUNCTIONS
+  const loadCurrentUser = async (accessToken = token) => {
+    if (!accessToken) return null
+
+    try {
+      const response = await fetch(`${API_URL}/users/me`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      })
+
+      if (!response.ok) {
+        return null
+      }
+
+      const data = await response.json()
+      const userData = {
+        id: data.id,
+        email: data.email,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        role: data.role,
+        city: data.city,
+      }
+
+      setUser(userData)
+      localStorage.setItem('user', JSON.stringify(userData))
+      return userData
+    } catch (err) {
+      setError('Error loading profile: ' + err.message)
+      return null
+    }
+  }
+
   const handleLogin = async (e) => {
     e.preventDefault()
     setError('')
@@ -40,14 +95,15 @@ export default function App() {
       const data = await response.json()
       if (response.ok) {
         setToken(data.token)
-        // Декодирай JWT токена за userId (или съхрани от регистрация)
-        const userData = { email: formData.loginEmail, id: data.userId }
-        setUser(userData)
         localStorage.setItem('token', data.token)
-        localStorage.setItem('user', JSON.stringify(userData))
-        setView('cats')
-        setFormData({})
-        loadCats()
+        const currentUser = await loadCurrentUser(data.token)
+        if (currentUser) {
+          setView('cats')
+          setFormData({})
+          loadCats()
+        } else {
+          handleLogout()
+        }
       } else {
         setError(data.message || 'Login failed')
       }
@@ -68,6 +124,7 @@ export default function App() {
           lastName: formData.lastName,
           email: formData.registerEmail,
           password: formData.registerPassword,
+          role: formData.registerRole || 'pet-adopter',
         }),
       })
       const data = await response.json()
@@ -84,10 +141,12 @@ export default function App() {
         const loginData = await loginResponse.json()
         if (loginResponse.ok) {
           setToken(loginData.token)
-          const userData = { email: formData.registerEmail, id: data.userId }
-          setUser(userData)
           localStorage.setItem('token', loginData.token)
-          localStorage.setItem('user', JSON.stringify(userData))
+          const currentUser = await loadCurrentUser(loginData.token)
+          if (!currentUser) {
+            handleLogout()
+            return
+          }
           setFormData({})
           setView('cats')
           loadCats()
@@ -106,18 +165,95 @@ export default function App() {
   // CATS FUNCTIONS
   const loadCats = async (page = 1) => {
     setLoading(true)
+    setError('')
     try {
       const response = await fetch(`${API_URL}/cats?page=${page}&pageSize=10`)
       if (response.ok) {
         const data = await response.json()
-        setCats(data.data)
-        setTotalPages(data.totalPages)
+        setCats(data.data || [])
+        setTotalPages(data.totalPages || 1)
         setCurrentPage(page)
+      } else {
+        setError('Failed to load cats')
+        setCats([])
       }
     } catch (err) {
       setError('Error loading cats: ' + err.message)
+      setCats([])
     }
     setLoading(false)
+  }
+
+  const loadAdminUsers = async () => {
+    if (!token || !isAdmin) return
+
+    setAdminLoading(true)
+    setAdminError('')
+    try {
+      const response = await fetch(`${API_URL}/admin/users`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        setAdminError(data.message || 'Failed to load users')
+        setAdminUsers([])
+        return
+      }
+
+      const data = await response.json()
+      setAdminUsers(data || [])
+    } catch (err) {
+      setAdminError('Error loading users: ' + err.message)
+      setAdminUsers([])
+    } finally {
+      setAdminLoading(false)
+    }
+  }
+
+  const handleUpdateUserRole = async (userId, role) => {
+    setAdminError('')
+    try {
+      const response = await fetch(`${API_URL}/admin/users/${userId}/role`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ role }),
+      })
+
+      const data = await response.json().catch(() => ({}))
+      if (response.ok) {
+        await loadAdminUsers()
+      } else {
+        setAdminError(data.message || 'Failed to update role')
+      }
+    } catch (err) {
+      setAdminError('Error: ' + err.message)
+    }
+  }
+
+  const handleDeleteUser = async (userId) => {
+    if (!window.confirm('Delete this user? This will also remove their cats.')) return
+
+    setAdminError('')
+    try {
+      const response = await fetch(`${API_URL}/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+
+      const data = await response.json().catch(() => ({}))
+      if (response.ok) {
+        await loadAdminUsers()
+        loadCats(currentPage)
+      } else {
+        setAdminError(data.message || 'Failed to delete user')
+      }
+    } catch (err) {
+      setAdminError('Error: ' + err.message)
+    }
   }
 
   const handleNewCat = async (e) => {
@@ -167,7 +303,29 @@ export default function App() {
       if (response.ok) {
         loadCats()
       } else {
-        setError('Failed to delete cat')
+        const data = await response.json().catch(() => ({}))
+        setError(data.message || 'Failed to delete cat')
+      }
+    } catch (err) {
+      setError('Error: ' + err.message)
+    }
+  }
+
+  const handleSeedTenCats = async () => {
+    setError('')
+    try {
+      const response = await fetch(`${API_URL}/admin/seed-cats`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+
+      const data = await response.json().catch(() => ({}))
+      if (response.ok) {
+        alert(data.message || '10 cats were created successfully.')
+        setView('cats')
+        loadCats(1)
+      } else {
+        setError(data.message || 'Failed to create cats')
       }
     } catch (err) {
       setError('Error: ' + err.message)
@@ -180,8 +338,9 @@ export default function App() {
     setCats([])
     localStorage.removeItem('token')
     localStorage.removeItem('user')
-    setView('login')
+    setView('cats')
     setFormData({})
+    loadCats(1)
   }
 
   const handleInputChange = (e) => {
@@ -194,19 +353,25 @@ export default function App() {
       <header>
         <h1>🐱 Cat Adoption</h1>
         <nav>
-          {token && user ? (
-            <>
-              <button className="btn-primary" onClick={() => setView('cats')}>🐱 Cats</button>
-              <button className="btn-primary" onClick={() => setView('newCat')}>+ New Listing</button>
-              <span style={{ color: '#666', padding: '10px' }}>Hi, {user.email}!</span>
-              <button className="btn-logout" onClick={handleLogout}>Logout</button>
-            </>
-          ) : (
-            <>
-              <button className="btn-primary" onClick={() => setView('login')}>Login</button>
-              <button className="btn-primary" onClick={() => setView('register')}>Register</button>
-            </>
-          )}
+          <>
+            <button className="btn-primary" onClick={() => setView('cats')}>🐱 Cats</button>
+            {token && user ? (
+              <>
+                {canCreateListings && <button className="btn-primary" onClick={() => setView('newCat')}>+ New Listing</button>}
+                {isAdmin && <button className="btn-primary" onClick={() => setView('admin')}>🛠 Admin Panel</button>}
+                <span style={{ color: '#666', padding: '10px' }}>
+                  Hi, {user.firstName || user.email}!
+                  <span className="role-badge">{user.role}</span>
+                </span>
+                <button className="btn-logout" onClick={handleLogout}>Logout</button>
+              </>
+            ) : (
+              <>
+                <button className="btn-primary" onClick={() => setView('login')}>Login</button>
+                <button className="btn-primary" onClick={() => setView('register')}>Register</button>
+              </>
+            )}
+          </>
         </nav>
       </header>
 
@@ -216,6 +381,9 @@ export default function App() {
       {view === 'login' && !token && (
         <div className="auth-container">
           <h2>Login</h2>
+          <p className="admin-description" style={{ marginBottom: '15px' }}>
+            Demo admin: <strong>john@example.com</strong> / <strong>password123</strong>
+          </p>
           <form onSubmit={handleLogin}>
             <div className="form-group">
               <label>Email</label>
@@ -254,6 +422,13 @@ export default function App() {
               <label>Password</label>
               <input type="password" name="registerPassword" value={formData.registerPassword || ''} onChange={handleInputChange} required />
             </div>
+            <div className="form-group">
+              <label>Role</label>
+              <select name="registerRole" value={formData.registerRole || 'pet-adopter'} onChange={handleInputChange} required>
+                <option value="pet-adopter">pet-adopter</option>
+                <option value="care-giver">care-giver</option>
+              </select>
+            </div>
             <input type="submit" value="Register" />
           </form>
           <div className="auth-link">
@@ -263,11 +438,11 @@ export default function App() {
       )}
 
       {/* CATS LIST VIEW */}
-      {view === 'cats' && token && (
+      {view === 'cats' && (
         <div className="cats-section">
           <div className="section-header">
             <h2>🐱 Available Cats</h2>
-            <button className="btn-primary" onClick={() => setView('newCat')}>+ New Listing</button>
+            {canCreateListings && <button className="btn-primary" onClick={() => setView('newCat')}>+ New Listing</button>}
           </div>
           {loading ? (
             <div className="loading">Loading...</div>
@@ -291,8 +466,8 @@ export default function App() {
                       <div className="cat-info">Color: {cat.color}</div>
                       <div className="cat-info">Location: {cat.location}</div>
                       <div className="cat-info">Description: {cat.description}</div>
-                      <div className="cat-owner">By: {cat.owner.firstName} {cat.owner.lastName}</div>
-                      {user && user.id === cat.owner.id && (
+                      <div className="cat-owner">By: {cat.owner?.firstName} {cat.owner?.lastName}</div>
+                      {canDeleteCats && user && cat.owner?.id && (user.role === 'admin' || user.id === cat.owner.id) && (
                         <div className="cat-actions">
                           <button className="btn-delete" onClick={() => handleDeleteCat(cat.id)}>Delete</button>
                         </div>
@@ -315,6 +490,12 @@ export default function App() {
       {view === 'newCat' && token && (
         <div className="auth-container" style={{ maxWidth: '600px' }}>
           <h2>Create Cat Listing</h2>
+          {!canCreateListings && (
+            <div className="alert error" style={{ marginBottom: '20px' }}>
+              Only admins and care-givers can create listings.
+            </div>
+          )}
+          {canCreateListings ? (
           <form onSubmit={handleNewCat}>
             <div className="form-group">
               <label>Name</label>
@@ -350,7 +531,89 @@ export default function App() {
             </div>
             <input type="submit" value="Create Listing" />
           </form>
+          ) : null}
           <button style={{ marginTop: '10px', width: '100%', padding: '10px', background: '#999', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }} onClick={() => setView('cats')}>Cancel</button>
+        </div>
+      )}
+
+      {/* ADMIN VIEW */}
+      {view === 'admin' && token && isAdmin && (
+        <div className="auth-container" style={{ maxWidth: '700px' }}>
+          <h2>🛠 Admin Panel</h2>
+          <p className="admin-description">
+            Use this panel to generate 10 fresh cat listings. The cats will be owned by the current admin account.
+          </p>
+          <div className="admin-stats">
+            <div><strong>User:</strong> {user.firstName} {user.lastName}</div>
+            <div><strong>Role:</strong> {user.role}</div>
+            <div><strong>Email:</strong> {user.email}</div>
+            <div><strong>Admin badge:</strong> <span className="role-badge">admin</span></div>
+          </div>
+          <button className="btn-primary" style={{ width: '100%', marginTop: '20px' }} onClick={handleSeedTenCats}>
+            + Create 10 Cats
+          </button>
+          <button style={{ marginTop: '10px', width: '100%', padding: '10px', background: '#999', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }} onClick={() => setView('cats')}>Back to Cats</button>
+
+          <div style={{ marginTop: '30px' }}>
+            <h3 style={{ marginBottom: '15px', color: '#667eea' }}>User Management</h3>
+            {adminError && <div className="alert error" style={{ marginBottom: '15px' }}>{adminError}</div>}
+            {adminLoading ? (
+              <div className="loading" style={{ color: '#333' }}>Loading users...</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', background: 'rgba(255,255,255,0.95)', borderRadius: '10px' }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', borderBottom: '1px solid #e0e0e0' }}>
+                      <th style={{ padding: '12px' }}>User</th>
+                      <th style={{ padding: '12px' }}>Email</th>
+                      <th style={{ padding: '12px' }}>Role</th>
+                      <th style={{ padding: '12px' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {adminUsers.map((adminUser) => {
+                      const isProtectedAdmin = adminUser.role === 'admin'
+                      const isCurrentUser = user?.id === adminUser.id
+                      return (
+                        <tr key={adminUser.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                          <td style={{ padding: '12px' }}>
+                            {adminUser.firstName} {adminUser.lastName}
+                            {isProtectedAdmin && <span className="role-badge" style={{ marginLeft: '10px' }}>admin</span>}
+                            {isCurrentUser && <span style={{ marginLeft: '10px', color: '#999', fontSize: '12px' }}>(you)</span>}
+                          </td>
+                          <td style={{ padding: '12px' }}>{adminUser.email}</td>
+                          <td style={{ padding: '12px' }}>
+                            {isProtectedAdmin ? (
+                              <span className="role-badge">admin</span>
+                            ) : (
+                              <select
+                                value={adminUser.role}
+                                onChange={(e) => handleUpdateUserRole(adminUser.id, e.target.value)}
+                              >
+                                <option value="pet-adopter">pet-adopter</option>
+                                <option value="care-giver">care-giver</option>
+                              </select>
+                            )}
+                          </td>
+                          <td style={{ padding: '12px' }}>
+                            <button
+                              className="btn-delete"
+                              disabled={isProtectedAdmin}
+                              onClick={() => handleDeleteUser(adminUser.id)}
+                              style={{ opacity: isProtectedAdmin ? 0.5 : 1 }}
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+                {adminUsers.length === 0 && <div style={{ padding: '15px', color: '#666' }}>No users found.</div>}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
