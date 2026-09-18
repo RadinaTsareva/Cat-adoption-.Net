@@ -5,13 +5,16 @@ var builder = WebApplication.CreateBuilder(args);
 // Controllers
 builder.Services.AddControllers();
 
-// CORS - Simple and works!
+// CORS - Allow localhost for dev and vercel.app domains for production
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
         policy
-            .WithOrigins("http://localhost:3000")
+            .WithOrigins(
+                "http://localhost:3000",
+                "https://cat-adoption-6gefslnln-radinatsarevas-projects.vercel.app"
+            )
             .AllowAnyMethod()
             .AllowAnyHeader();
     });
