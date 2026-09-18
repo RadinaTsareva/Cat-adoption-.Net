@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://cat-adoption-net-production.up.railway.app/api/:path*"
+    }
+  ]
+}
