@@ -16,7 +16,7 @@ public class Cat
 
     public string Location { get; set; } = string.Empty;
 
-    public string Status { get; set; } = "Available";
+    public string Status { get; set; } = CatStatuses.WaitingAdoption;
 
     public string? ImageUrl { get; set; }
 

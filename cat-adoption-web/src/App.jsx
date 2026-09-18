@@ -3,6 +3,88 @@ import './App.css'
 
 const API_URL = '/api'
 
+const CAT_STATUSES = {
+  waitingAdoption: 'waiting-adoption',
+  inProgress: 'in-progress',
+  adopted: 'adopted',
+}
+
+const getCatFiltersFromUrl = () => {
+  if (typeof window === 'undefined') {
+    return { sex: '', color: '', status: '', city: '' }
+  }
+
+  const params = new URLSearchParams(window.location.search)
+  return {
+    sex: params.get('sex') || '',
+    color: params.get('color') || '',
+    status: params.get('status') || '',
+    city: params.get('city') || '',
+  }
+}
+
+const getCatPageFromUrl = () => {
+  if (typeof window === 'undefined') {
+    return 1
+  }
+
+  const params = new URLSearchParams(window.location.search)
+  const page = Number.parseInt(params.get('page') || '1', 10)
+  return Number.isFinite(page) && page > 0 ? page : 1
+}
+
+const updateCatUrl = (page, filters) => {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const params = new URLSearchParams()
+  const nextFilters = filters || {}
+
+  Object.entries(nextFilters).forEach(([key, value]) => {
+    if (value && value.trim()) {
+      params.set(key, value.trim())
+    }
+  })
+
+  if (page && page > 1) {
+    params.set('page', String(page))
+  }
+
+  const query = params.toString()
+  const nextUrl = `${window.location.pathname}${query ? `?${query}` : ''}`
+  window.history.replaceState({}, '', nextUrl)
+}
+
+const normalizeCatStatus = (status) => {
+  const normalized = (status || '').toString().trim().toLowerCase()
+
+  switch (normalized) {
+    case CAT_STATUSES.adopted:
+      return CAT_STATUSES.adopted
+    case CAT_STATUSES.inProgress:
+    case 'in progress':
+    case 'in process of adoption':
+      return CAT_STATUSES.inProgress
+    case CAT_STATUSES.waitingAdoption:
+    case 'waiting adoption':
+    case 'available':
+    default:
+      return CAT_STATUSES.waitingAdoption
+  }
+}
+
+const getCatStatusLabel = (status) => {
+  switch (normalizeCatStatus(status)) {
+    case CAT_STATUSES.inProgress:
+      return 'In process of adoption'
+    case CAT_STATUSES.adopted:
+      return 'Adopted'
+    default:
+      return 'Waiting adoption'
+  }
+}
+
 export default function App() {
   const [view, setView] = useState('cats') // login, register, cats, newCat, admin
   const [token, setToken] = useState(localStorage.getItem('token'))
@@ -11,20 +93,22 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [formData, setFormData] = useState({})
-  const [currentPage, setCurrentPage] = useState(1)
+  const [currentPage, setCurrentPage] = useState(getCatPageFromUrl())
   const [totalPages, setTotalPages] = useState(1)
   const [imageFile, setImageFile] = useState(null)
+  const [editingCatId, setEditingCatId] = useState(null)
+  const [catFilters, setCatFilters] = useState(getCatFiltersFromUrl())
   const [adminUsers, setAdminUsers] = useState([])
   const [adminLoading, setAdminLoading] = useState(false)
   const [adminError, setAdminError] = useState('')
   const isAdmin = user?.role === 'admin'
   const canCreateListings = isAdmin || user?.role === 'care-giver'
-  const canDeleteCats = isAdmin || Boolean(user?.id)
+  const hasCatFilters = Object.values(catFilters).some((value) => value && value.trim())
 
   useEffect(() => {
     const bootstrapAuth = async () => {
       setView('cats')
-      loadCats(1)
+      loadCats(getCatPageFromUrl(), getCatFiltersFromUrl())
 
       if (!token) {
         setUser(null)
@@ -163,16 +247,28 @@ export default function App() {
   }
 
   // CATS FUNCTIONS
-  const loadCats = async (page = 1) => {
+  const loadCats = async (page = 1, filters = catFilters) => {
     setLoading(true)
     setError('')
     try {
-      const response = await fetch(`${API_URL}/cats?page=${page}&pageSize=10`)
+      const queryParams = new URLSearchParams({
+        page: String(page),
+        pageSize: '10',
+      })
+
+      Object.entries(filters || {}).forEach(([key, value]) => {
+        if (value && value.trim()) {
+          queryParams.set(key, value.trim())
+        }
+      })
+
+      const response = await fetch(`${API_URL}/cats?${queryParams.toString()}`)
       if (response.ok) {
         const data = await response.json()
         setCats(data.data || [])
         setTotalPages(data.totalPages || 1)
         setCurrentPage(page)
+        updateCatUrl(page, filters)
       } else {
         setError('Failed to load cats')
         setCats([])
@@ -182,6 +278,54 @@ export default function App() {
       setCats([])
     }
     setLoading(false)
+  }
+
+  const resetCatForm = () => {
+    setFormData({})
+    setImageFile(null)
+    setEditingCatId(null)
+  }
+
+  const handleStartEditCat = (cat) => {
+    setFormData({
+      catName: cat.name,
+      catAge: cat.age,
+      catSex: cat.sex,
+      catColor: cat.color,
+      catDescription: cat.description,
+      catLocation: cat.location,
+      catStatus: normalizeCatStatus(cat.status),
+    })
+    setImageFile(null)
+    setEditingCatId(cat.id)
+    setView('newCat')
+  }
+
+  const handleCancelCatForm = () => {
+    resetCatForm()
+    setView('cats')
+  }
+
+  const handleCatFilterChange = (e) => {
+    const { name, value } = e.target
+    setCatFilters((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleApplyCatFilters = (e) => {
+    e.preventDefault()
+    loadCats(1, catFilters)
+  }
+
+  const handleResetCatFilters = () => {
+    const resetFilters = {
+      sex: '',
+      color: '',
+      status: '',
+      city: '',
+    }
+
+    setCatFilters(resetFilters)
+    loadCats(1, resetFilters)
   }
 
   const loadAdminUsers = async () => {
@@ -267,12 +411,15 @@ export default function App() {
       formDataToSend.append('color', formData.catColor)
       formDataToSend.append('description', formData.catDescription)
       formDataToSend.append('location', formData.catLocation)
+      formDataToSend.append('status', formData.catStatus || CAT_STATUSES.waitingAdoption)
       if (imageFile) {
         formDataToSend.append('image', imageFile)
       }
 
-      const response = await fetch(`${API_URL}/cats`, {
-        method: 'POST',
+      const url = editingCatId ? `${API_URL}/cats/${editingCatId}` : `${API_URL}/cats`
+      const method = editingCatId ? 'PUT' : 'POST'
+      const response = await fetch(url, {
+        method,
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -280,13 +427,12 @@ export default function App() {
       })
       const data = await response.json()
       if (response.ok) {
-        alert('Cat listing created successfully!')
+        alert(editingCatId ? 'Cat listing updated successfully!' : 'Cat listing created successfully!')
+        resetCatForm()
         setView('cats')
-        setFormData({})
-        setImageFile(null)
-        loadCats()
+        loadCats(currentPage)
       } else {
-        setError(data.message || 'Failed to create listing')
+        setError(data.message || (editingCatId ? 'Failed to update listing' : 'Failed to create listing'))
       }
     } catch (err) {
       setError('Connection error: ' + err.message)
@@ -339,7 +485,7 @@ export default function App() {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
     setView('cats')
-    setFormData({})
+    resetCatForm()
     loadCats(1)
   }
 
@@ -357,7 +503,7 @@ export default function App() {
             <button className="btn-primary" onClick={() => setView('cats')}>🐱 Cats</button>
             {token && user ? (
               <>
-                {canCreateListings && <button className="btn-primary" onClick={() => setView('newCat')}>+ New Listing</button>}
+                {canCreateListings && <button className="btn-primary" onClick={() => { resetCatForm(); setView('newCat') }}>+ New Listing</button>}
                 {isAdmin && <button className="btn-primary" onClick={() => setView('admin')}>🛠 Admin Panel</button>}
                 <span style={{ color: '#666', padding: '10px' }}>
                   Hi, {user.firstName || user.email}!
@@ -441,34 +587,69 @@ export default function App() {
       {view === 'cats' && (
         <div className="cats-section">
           <div className="section-header">
-            <h2>🐱 Available Cats</h2>
-            {canCreateListings && <button className="btn-primary" onClick={() => setView('newCat')}>+ New Listing</button>}
+            <h2>🐱 All Cats</h2>
+            {canCreateListings && <button className="btn-primary" onClick={() => { resetCatForm(); setView('newCat') }}>+ New Listing</button>}
           </div>
+          <form className="cat-filters" onSubmit={handleApplyCatFilters}>
+            <div className="cat-filters__grid">
+              <div className="form-group">
+                <label>Sex</label>
+                <select name="sex" value={catFilters.sex} onChange={handleCatFilterChange}>
+                  <option value="">All</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Color</label>
+                <input type="text" name="color" value={catFilters.color} onChange={handleCatFilterChange} placeholder="e.g. Black" />
+              </div>
+              <div className="form-group">
+                <label>Status</label>
+                <select name="status" value={catFilters.status} onChange={handleCatFilterChange}>
+                  <option value="">All</option>
+                  <option value={CAT_STATUSES.waitingAdoption}>Waiting adoption</option>
+                  <option value={CAT_STATUSES.inProgress}>In process of adoption</option>
+                  <option value={CAT_STATUSES.adopted}>Adopted</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>City</label>
+                <input type="text" name="city" value={catFilters.city} onChange={handleCatFilterChange} placeholder="e.g. Sofia" />
+              </div>
+            </div>
+            <div className="cat-filters__actions">
+              <button type="submit" className="btn-primary">Search</button>
+              <button type="button" className="btn-secondary" onClick={handleResetCatFilters}>Reset</button>
+            </div>
+          </form>
           {loading ? (
             <div className="loading">Loading...</div>
           ) : cats.length === 0 ? (
             <div className="empty-state">
               <h3>No cats yet</h3>
-              <p>Create the first listing!</p>
+              <p>{hasCatFilters ? 'No cats match the selected filters.' : 'Create the first listing!'}</p>
             </div>
            ) : (
             <div>
               <div className="cats-grid">
                 {cats.map((cat) => (
-                  <div key={cat.id} className="cat-card">
+                  <div key={cat.id} className={`cat-card ${normalizeCatStatus(cat.status) === CAT_STATUSES.adopted ? 'cat-card--adopted' : ''}`}>
                     <div className="cat-image-placeholder" style={{backgroundImage: cat.imageUrl ? `url(${cat.imageUrl})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center'}}>
                       {!cat.imageUrl && '🐱'}
                     </div>
                     <div className="cat-content">
                       <h3>{cat.name}</h3>
+                      <div className="cat-status-badge">{getCatStatusLabel(cat.status)}</div>
                       <div className="cat-info">Age: {cat.age} years</div>
                       <div className="cat-info">Sex: {cat.sex}</div>
                       <div className="cat-info">Color: {cat.color}</div>
                       <div className="cat-info">Location: {cat.location}</div>
                       <div className="cat-info">Description: {cat.description}</div>
                       <div className="cat-owner">By: {cat.owner?.firstName} {cat.owner?.lastName}</div>
-                      {canDeleteCats && user && cat.owner?.id && (user.role === 'admin' || user.id === cat.owner.id) && (
+                      {token && user && cat.owner?.id && (user.role === 'admin' || user.id === cat.owner.id) && (
                         <div className="cat-actions">
+                          <button className="btn-edit" onClick={() => handleStartEditCat(cat)}>Edit</button>
                           <button className="btn-delete" onClick={() => handleDeleteCat(cat.id)}>Delete</button>
                         </div>
                       )}
@@ -489,7 +670,7 @@ export default function App() {
       {/* NEW CAT VIEW */}
       {view === 'newCat' && token && (
         <div className="auth-container" style={{ maxWidth: '600px' }}>
-          <h2>Create Cat Listing</h2>
+          <h2>{editingCatId ? 'Edit Cat Listing' : 'Create Cat Listing'}</h2>
           {!canCreateListings && (
             <div className="alert error" style={{ marginBottom: '20px' }}>
               Only admins and care-givers can create listings.
@@ -526,13 +707,22 @@ export default function App() {
               <input type="text" name="catLocation" value={formData.catLocation || ''} onChange={handleInputChange} required />
             </div>
             <div className="form-group">
+              <label>Status</label>
+              <select name="catStatus" value={formData.catStatus || CAT_STATUSES.waitingAdoption} onChange={handleInputChange} required>
+                <option value={CAT_STATUSES.waitingAdoption}>Waiting adoption</option>
+                <option value={CAT_STATUSES.inProgress}>In process of adoption</option>
+                <option value={CAT_STATUSES.adopted}>Adopted</option>
+              </select>
+            </div>
+            <div className="form-group">
               <label>Cat Photo (optional)</label>
+              {editingCatId && <div style={{ marginBottom: '8px', color: '#666', fontSize: '13px' }}>Choose a new photo to replace the current one.</div>}
               <input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files?.[0] || null)} />
             </div>
-            <input type="submit" value="Create Listing" />
+            <input type="submit" value={editingCatId ? 'Update Listing' : 'Create Listing'} />
           </form>
           ) : null}
-          <button style={{ marginTop: '10px', width: '100%', padding: '10px', background: '#999', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }} onClick={() => setView('cats')}>Cancel</button>
+          <button style={{ marginTop: '10px', width: '100%', padding: '10px', background: '#999', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }} onClick={handleCancelCatForm}>Cancel</button>
         </div>
       )}
 

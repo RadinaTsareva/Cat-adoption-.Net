@@ -1,45 +1,80 @@
-# Cat Adoption API
+# Cat Adoption
 
-## Run locally
+Full-stack cat adoption app with an ASP.NET Core API, React frontend, and PostgreSQL.
 
-1. Start PostgreSQL.
-2. Update `CatAdoption.Api/appsettings.json` if needed.
-3. Run:
+## Quick start with Docker
+
+Use the root `Makefile`:
+
+```bash
+make start
+```
+
+This starts:
+- `postgres` on port `5433`
+- `api` on port `5154`
+- `frontend` on port `3000`
+
+Useful shortcuts:
+
+```bash
+make reload
+make down
+make logs
+make logs-api
+make logs-postgres
+make test
+```
+
+## Docker Compose
+
+If you prefer raw Docker commands:
+
+```bash
+docker compose up -d --build
+```
+
+Stop the stack:
+
+```bash
+docker compose down --remove-orphans
+```
+
+Full reset, including database volumes:
+
+```bash
+docker compose down -v --remove-orphans && docker compose up -d --build
+```
+
+## Local development
+
+### API only
 
 ```bash
 dotnet run --project CatAdoption.Api/CatAdoption.Api.csproj
 ```
 
-## Run with Docker
-
-Start the API and main database:
+### Frontend only
 
 ```bash
-docker compose up -d
+cd cat-adoption-web
+npm install
+npm run dev
 ```
 
-API URL:
+## URLs
 
-```text
-http://localhost:5154
-```
+- Frontend: `http://localhost:3000`
+- API: `http://localhost:5154`
+- Swagger: `http://localhost:5154/swagger`
 
-Swagger:
+## Tests
 
-```text
-http://localhost:5154/swagger
-```
-
-## Run tests
-
-Start the test database:
-
-```bash
-docker compose -f docker-compose.test.yml up -d
-```
-
-Run the tests:
+Run the integration tests:
 
 ```bash
 dotnet test CatAdoption.Api.Tests/CatAdoption.Api.Tests.csproj
 ```
+
+The test suite uses SQLite in-memory and does not require the Docker database.
+

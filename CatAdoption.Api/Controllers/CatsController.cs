@@ -22,7 +22,8 @@ public class CatsController : ControllerBase
 
     [HttpPost]
     [Authorize(Roles = UserRoles.Admin + "," + UserRoles.CareGiver)]
-    public async Task<IActionResult> CreateCat()
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> CreateCat([FromForm] CreateCatRequest request)
     {
         var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
@@ -36,48 +37,35 @@ public class CatsController : ControllerBase
             return Unauthorized();
         }
 
-        var name = Request.Form["name"];
-        var ageStr = Request.Form["age"];
-        var sex = Request.Form["sex"];
-        var color = Request.Form["color"];
-        var description = Request.Form["description"];
-        var location = Request.Form["location"];
-        var imageFile = Request.Form.Files["image"];
-
-        if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(ageStr) || string.IsNullOrEmpty(sex))
+        if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Sex))
         {
             return BadRequest(new { message = "Missing required fields" });
         }
 
-        if (!int.TryParse(ageStr, out var age))
+        if (!CatStatuses.TryNormalize(request.Status, out var status))
         {
-            return BadRequest(new { message = "Invalid age" });
+            return BadRequest(new { message = "Invalid status" });
         }
 
-        string? imageUrl = null;
-        if (imageFile != null && imageFile.Length > 0)
-        {
-            // For now, just create a base64 or store as URL placeholder
-            // In production, you'd upload to S3, Azure, or similar
-            using (var ms = new MemoryStream())
-            {
-                await imageFile.CopyToAsync(ms);
-                var fileBytes = ms.ToArray();
-                imageUrl = $"data:{imageFile.ContentType};base64,{Convert.ToBase64String(fileBytes)}";
-            }
-        }
+        var imageUrl = await ConvertImageToDataUrlAsync(request.Image);
 
         var cat = new Cat
         {
-            Name = name.ToString(),
-            Age = age,
-            Sex = sex.ToString(),
-            Color = color.ToString(),
-            Description = description.ToString(),
-            Location = location.ToString(),
+            Name = request.Name?.Trim() ?? string.Empty,
+            Age = request.Age,
+            Sex = request.Sex?.Trim() ?? string.Empty,
+            Color = request.Color?.Trim() ?? string.Empty,
+            Description = request.Description?.Trim() ?? string.Empty,
+            Location = request.Location?.Trim() ?? string.Empty,
+            Status = status,
             ImageUrl = imageUrl,
             UserId = userId
         };
+
+        if (cat.Age <= 0)
+        {
+            return BadRequest(new { message = "Invalid age" });
+        }
 
         _context.Cats.Add(cat);
 
@@ -92,17 +80,66 @@ public class CatsController : ControllerBase
 
     [HttpGet]
     [AllowAnonymous]
-    public async Task<IActionResult> GetCats([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+    public async Task<IActionResult> GetCats(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? sex = null,
+        [FromQuery] string? color = null,
+        [FromQuery] string? status = null,
+        [FromQuery] string? city = null)
     {
         if (page < 1) page = 1;
         if (pageSize < 1 || pageSize > 100) pageSize = 10;
 
         var skip = (page - 1) * pageSize;
+        var normalizedStatus = string.Empty;
 
-        var totalCount = await _context.Cats.CountAsync();
-        var cats = await _context.Cats
+        if (!string.IsNullOrWhiteSpace(status) && !CatStatuses.TryNormalize(status, out normalizedStatus))
+        {
+            return BadRequest(new { message = "Invalid status" });
+        }
+
+        var query = _context.Cats
             .AsNoTracking()
             .Include(cat => cat.User)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(sex))
+        {
+            var sexFilter = sex.Trim().ToLowerInvariant();
+            query = query.Where(cat => cat.Sex.ToLower() == sexFilter);
+        }
+
+        if (!string.IsNullOrWhiteSpace(color))
+        {
+            var colorFilter = color.Trim().ToLowerInvariant();
+            query = query.Where(cat => cat.Color.ToLower().Contains(colorFilter));
+        }
+
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            var cityFilter = city.Trim().ToLowerInvariant();
+            query = query.Where(cat => cat.Location.ToLower().Contains(cityFilter));
+        }
+
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            query = normalizedStatus switch
+            {
+                CatStatuses.WaitingAdoption => query.Where(cat =>
+                    cat.Status.ToLower() == CatStatuses.WaitingAdoption ||
+                    cat.Status.ToLower() == "available"),
+                CatStatuses.InProgress => query.Where(cat =>
+                    cat.Status.ToLower() == CatStatuses.InProgress ||
+                    cat.Status.ToLower() == "in progress" ||
+                    cat.Status.ToLower() == "in process of adoption"),
+                CatStatuses.Adopted => query.Where(cat => cat.Status.ToLower() == CatStatuses.Adopted),
+                _ => query
+            };
+        }
+
+        var totalCount = await query.CountAsync();
+        var cats = await query
             .OrderByDescending(c => c.Id)
             .Skip(skip)
             .Take(pageSize)
@@ -160,6 +197,7 @@ public class CatsController : ControllerBase
             cat.Description,
             cat.Location,
             cat.Status,
+            cat.ImageUrl,
             Owner = new
             {
                 cat.User.Id,
@@ -170,7 +208,8 @@ public class CatsController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> UpdateCat(int id, UpdateCatRequest request)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> UpdateCat(int id, [FromForm] UpdateCatRequest request)
     {
         var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
@@ -197,12 +236,27 @@ public class CatsController : ControllerBase
             return Forbid();
         }
 
-        cat.Name = request.Name;
+        var status = cat.Status;
+        if (!string.IsNullOrWhiteSpace(request.Status) && !CatStatuses.TryNormalize(request.Status, out status))
+        {
+            return BadRequest(new { message = "Invalid status" });
+        }
+
+
+        var imageUrl = cat.ImageUrl;
+        if (request.Image != null && request.Image.Length > 0)
+        {
+            imageUrl = await ConvertImageToDataUrlAsync(request.Image);
+        }
+
+        cat.Name = request.Name?.Trim() ?? string.Empty;
         cat.Age = request.Age;
-        cat.Sex = request.Sex;
-        cat.Color = request.Color;
-        cat.Description = request.Description;
-        cat.Location = request.Location;
+        cat.Sex = request.Sex?.Trim() ?? string.Empty;
+        cat.Color = request.Color?.Trim() ?? string.Empty;
+        cat.Description = request.Description?.Trim() ?? string.Empty;
+        cat.Location = request.Location?.Trim() ?? string.Empty;
+        cat.Status = status;
+        cat.ImageUrl = imageUrl;
 
         await _context.SaveChangesAsync();
 
@@ -249,5 +303,18 @@ public class CatsController : ControllerBase
             message = "Cat listing deleted successfully.",
             catId = cat.Id
         });
+    }
+
+    private static async Task<string?> ConvertImageToDataUrlAsync(IFormFile? imageFile)
+    {
+        if (imageFile == null || imageFile.Length == 0)
+        {
+            return null;
+        }
+
+        using var ms = new MemoryStream();
+        await imageFile.CopyToAsync(ms);
+        var fileBytes = ms.ToArray();
+        return $"data:{imageFile.ContentType};base64,{Convert.ToBase64String(fileBytes)}";
     }
 }

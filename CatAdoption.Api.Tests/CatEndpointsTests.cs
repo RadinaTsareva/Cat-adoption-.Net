@@ -70,7 +70,8 @@ public class CatEndpointsTests
             { new StringContent("Female"), "sex" },
             { new StringContent("Black"), "color" },
             { new StringContent("Playful"), "description" },
-            { new StringContent("Varna"), "location" }
+            { new StringContent("Varna"), "location" },
+            { new StringContent(CatStatuses.InProgress), "status" }
         };
 
         var postResponse = await client.PostAsync("/api/cats", postContent);
@@ -85,20 +86,62 @@ public class CatEndpointsTests
         Assert.NotNull(listData);
         Assert.Single(listData);
         Assert.Equal("Shadow", listData[0].GetProperty("name").GetString());
+        Assert.Equal(CatStatuses.InProgress, listData[0].GetProperty("status").GetString());
+
+        var filteredResponse = await client.GetAsync("/api/cats?sex=Female&color=Black&status=in-progress&city=Varna");
+        Assert.Equal(HttpStatusCode.OK, filteredResponse.StatusCode);
+        var filteredJson = await filteredResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var filteredData = filteredJson.GetProperty("data").Deserialize<JsonElement[]>();
+        Assert.NotNull(filteredData);
+        Assert.Single(filteredData);
+        Assert.Equal(createdCatId, filteredData[0].GetProperty("id").GetInt32());
+
+        var waitingFilteredResponse = await client.GetAsync("/api/cats?status=waiting-adoption");
+        Assert.Equal(HttpStatusCode.OK, waitingFilteredResponse.StatusCode);
+        var waitingFilteredJson = await waitingFilteredResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var waitingFilteredData = waitingFilteredJson.GetProperty("data").Deserialize<JsonElement[]>();
+        Assert.NotNull(waitingFilteredData);
+        Assert.Empty(waitingFilteredData);
 
         var getResponse = await client.GetAsync($"/api/cats/{createdCatId}");
         Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
+        var getJson = await getResponse.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(CatStatuses.InProgress, getJson.GetProperty("status").GetString());
 
-        var putResponse = await client.PutAsJsonAsync($"/api/cats/{createdCatId}", new
+        using var imageContent = new ByteArrayContent(Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO0B9y0AAAAASUVORK5CYII="));
+        imageContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
+
+        using var putContent = new MultipartFormDataContent
         {
-            name = "Updated",
-            age = 4,
-            sex = "Male",
-            color = "Cream",
-            description = "Still friendly",
-            location = "Plovdiv"
-        });
+            { new StringContent("Updated"), "name" },
+            { new StringContent("4"), "age" },
+            { new StringContent("Male"), "sex" },
+            { new StringContent("Cream"), "color" },
+            { new StringContent("Still friendly"), "description" },
+            { new StringContent("Plovdiv"), "location" },
+            { new StringContent(CatStatuses.Adopted), "status" },
+            { imageContent, "image", "cat.png" }
+        };
+
+        var putResponse = await client.PutAsync($"/api/cats/{createdCatId}", putContent);
         Assert.Equal(HttpStatusCode.OK, putResponse.StatusCode);
+
+        var updatedListResponse = await client.GetAsync("/api/cats");
+        Assert.Equal(HttpStatusCode.OK, updatedListResponse.StatusCode);
+        var updatedListJson = await updatedListResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var updatedListData = updatedListJson.GetProperty("data").Deserialize<JsonElement[]>();
+        Assert.NotNull(updatedListData);
+        Assert.Single(updatedListData);
+        Assert.Equal(CatStatuses.Adopted, updatedListData[0].GetProperty("status").GetString());
+        Assert.StartsWith("data:image/png;base64,", updatedListData[0].GetProperty("imageUrl").GetString());
+
+        var adoptedFilteredResponse = await client.GetAsync("/api/cats?status=adopted&city=Plovdiv");
+        Assert.Equal(HttpStatusCode.OK, adoptedFilteredResponse.StatusCode);
+        var adoptedFilteredJson = await adoptedFilteredResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var adoptedFilteredData = adoptedFilteredJson.GetProperty("data").Deserialize<JsonElement[]>();
+        Assert.NotNull(adoptedFilteredData);
+        Assert.Single(adoptedFilteredData);
+        Assert.Equal(createdCatId, adoptedFilteredData[0].GetProperty("id").GetInt32());
 
         var deleteResponse = await client.DeleteAsync($"/api/cats/{createdCatId}");
         Assert.Equal(HttpStatusCode.OK, deleteResponse.StatusCode);
@@ -113,6 +156,13 @@ public class CatEndpointsTests
         var seededListData = seededListJson.GetProperty("data").Deserialize<JsonElement[]>();
         Assert.NotNull(seededListData);
         Assert.Equal(10, seededListData.Length);
+
+        var seededWaitingResponse = await client.GetAsync("/api/cats?status=waiting-adoption");
+        Assert.Equal(HttpStatusCode.OK, seededWaitingResponse.StatusCode);
+        var seededWaitingJson = await seededWaitingResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var seededWaitingData = seededWaitingJson.GetProperty("data").Deserialize<JsonElement[]>();
+        Assert.NotNull(seededWaitingData);
+        Assert.Equal(10, seededWaitingData.Length);
 
         await db.Database.EnsureDeletedAsync();
     }

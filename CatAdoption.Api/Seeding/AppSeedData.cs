@@ -170,7 +170,7 @@ public static class AppSeedData
             Color = color,
             Description = description,
             Location = location,
-            Status = "Available",
+            Status = CatStatuses.WaitingAdoption,
             UserId = ownerId
         };
     }

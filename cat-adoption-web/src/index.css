@@ -57,6 +57,15 @@ button {
   transform: translateY(-2px);
 }
 
+.btn-secondary {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.btn-secondary:hover {
+  background: #e2e8f0;
+}
+
 .btn-logout {
   background: #ff6b6b;
   color: white;
@@ -178,6 +187,31 @@ input[type="submit"]:hover {
   font-size: 24px;
 }
 
+.cat-filters {
+  margin-bottom: 25px;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 10px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.12);
+}
+
+.cat-filters__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.cat-filters__actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 15px;
+  flex-wrap: wrap;
+}
+
+.cat-filters__actions button {
+  min-width: 120px;
+}
+
 .role-badge {
   display: inline-block;
   margin-left: 8px;
@@ -222,9 +256,18 @@ input[type="submit"]:hover {
   flex-direction: column;
 }
 
+.cat-card--adopted {
+  filter: grayscale(1);
+  opacity: 0.65;
+}
+
 .cat-card:hover {
   transform: translateY(-5px);
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+}
+
+.cat-card--adopted:hover {
+  transform: none;
 }
 
 .cat-image-placeholder {
@@ -247,6 +290,20 @@ input[type="submit"]:hover {
 .cat-content h3 {
   color: #333;
   margin-bottom: 10px;
+}
+
+.cat-status-badge {
+  display: inline-flex;
+  width: fit-content;
+  margin-bottom: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(102, 126, 234, 0.12);
+  color: #667eea;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .cat-info {
