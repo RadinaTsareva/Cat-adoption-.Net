@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import './App.css'
 
-const API_URL = '/api'
+const API_URL = typeof __API_URL__ !== 'undefined' ? __API_URL__ : '/api'
 
 const CAT_STATUSES = {
   waitingAdoption: 'waiting-adoption',
