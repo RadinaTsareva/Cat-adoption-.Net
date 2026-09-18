@@ -1,13 +1,23 @@
 import React, { useState, useEffect } from 'react'
 import './App.css'
 
-// Detect API URL: use backend URL if set, otherwise default to /api (local proxy)
+// Detect API URL at runtime
 const getApiUrl = () => {
   // If build-time env var was set, use it
   if (typeof __VITE_API_BACKEND__ !== 'undefined' && __VITE_API_BACKEND__) {
+    console.log('Using build-time API URL:', __VITE_API_BACKEND__)
     return __VITE_API_BACKEND__
   }
+  
+  // Auto-detect: if on Vercel production domain, use Railway backend
+  if (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')) {
+    const railwayUrl = 'https://cat-adoption-net-production.up.railway.app'
+    console.log('Detected Vercel domain, using Railway backend:', railwayUrl)
+    return railwayUrl
+  }
+  
   // Otherwise use local proxy (works for Docker and dev)
+  console.log('Using local API proxy: /api')
   return '/api'
 }
 
