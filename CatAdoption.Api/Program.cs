@@ -5,16 +5,24 @@ var builder = WebApplication.CreateBuilder(args);
 // Controllers
 builder.Services.AddControllers();
 
-// CORS - Allow localhost for dev and vercel.app domains for production
+// CORS - Allow localhost for dev and all vercel.app domains for production
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
         policy
-            .WithOrigins(
-                "http://localhost:3000",
-                "https://cat-adoption-6gefslnln-radinatsarevas-projects.vercel.app"
-            )
+            .SetIsOriginAllowed(origin =>
+            {
+                // Allow localhost for development
+                if (origin.StartsWith("http://localhost"))
+                    return true;
+                
+                // Allow all vercel.app domains for production
+                if (origin.Contains(".vercel.app"))
+                    return true;
+                
+                return false;
+            })
             .AllowAnyMethod()
             .AllowAnyHeader();
     });
