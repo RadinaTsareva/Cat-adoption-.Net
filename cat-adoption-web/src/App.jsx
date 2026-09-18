@@ -1,7 +1,17 @@
 import React, { useState, useEffect } from 'react'
 import './App.css'
 
-const API_URL = typeof __API_URL__ !== 'undefined' ? __API_URL__ : '/api'
+// Detect API URL: use backend URL if set, otherwise default to /api (local proxy)
+const getApiUrl = () => {
+  // If build-time env var was set, use it
+  if (typeof __VITE_API_BACKEND__ !== 'undefined' && __VITE_API_BACKEND__) {
+    return __VITE_API_BACKEND__
+  }
+  // Otherwise use local proxy (works for Docker and dev)
+  return '/api'
+}
+
+const API_URL = getApiUrl()
 
 const CAT_STATUSES = {
   waitingAdoption: 'waiting-adoption',
