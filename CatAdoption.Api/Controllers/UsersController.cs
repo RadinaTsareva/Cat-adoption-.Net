@@ -15,6 +15,7 @@ public class UsersController : ControllerBase
     }
 
     [HttpGet("me")]
+    [HttpGet("me")]
     public async Task<IActionResult> GetMe()
     {
         var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);

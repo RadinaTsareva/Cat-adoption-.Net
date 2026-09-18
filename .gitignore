@@ -3,15 +3,32 @@
 .vs/
 *.user
 *.suo
+.vscode/
 
 # Build output
 bin/
 obj/
 **/bin/
 **/obj/
+dist/
 
 # Local DB / secrets
 *.db
 *.sqlite
 *.pdb
 appsettings.Development.json
+
+# Frontend (Vite React)
+node_modules/
+.env
+.env.local
+.env.*.local
+package-lock.json
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+

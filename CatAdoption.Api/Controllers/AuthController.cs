@@ -20,6 +20,11 @@ public class AuthController : ControllerBase
         _configuration = configuration;
     }
 
+    // Handle CORS preflight
+    [HttpOptions("{action}")]
+    public IActionResult Options() => Ok();
+
+    [HttpPost("register")]
     [HttpPost("register")]
     public async Task<IActionResult> Register(RegisterRequest request)
     {
