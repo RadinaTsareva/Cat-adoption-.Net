@@ -66,11 +66,11 @@ builder.Services.AddAuthorization();
 var app = builder.Build();
 
 // Swagger
-if (app.Environment.IsDevelopment())
-{
+// if (app.Environment.IsDevelopment())
+// {
     app.UseSwagger();
     app.UseSwaggerUI();
-}
+// }
 
 if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Test"))
 {
