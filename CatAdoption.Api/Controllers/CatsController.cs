@@ -21,7 +21,7 @@ public class CatsController : ControllerBase
 
 
     [HttpPost]
-    public async Task<IActionResult> CreateCat(CreateCatRequest request)
+    public async Task<IActionResult> CreateCat()
     {
         var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
@@ -35,14 +35,46 @@ public class CatsController : ControllerBase
             return Unauthorized();
         }
 
+        var name = Request.Form["name"];
+        var ageStr = Request.Form["age"];
+        var sex = Request.Form["sex"];
+        var color = Request.Form["color"];
+        var description = Request.Form["description"];
+        var location = Request.Form["location"];
+        var imageFile = Request.Form.Files["image"];
+
+        if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(ageStr) || string.IsNullOrEmpty(sex))
+        {
+            return BadRequest(new { message = "Missing required fields" });
+        }
+
+        if (!int.TryParse(ageStr, out var age))
+        {
+            return BadRequest(new { message = "Invalid age" });
+        }
+
+        string? imageUrl = null;
+        if (imageFile != null && imageFile.Length > 0)
+        {
+            // For now, just create a base64 or store as URL placeholder
+            // In production, you'd upload to S3, Azure, or similar
+            using (var ms = new MemoryStream())
+            {
+                await imageFile.CopyToAsync(ms);
+                var fileBytes = ms.ToArray();
+                imageUrl = $"data:{imageFile.ContentType};base64,{Convert.ToBase64String(fileBytes)}";
+            }
+        }
+
         var cat = new Cat
         {
-            Name = request.Name,
-            Age = request.Age,
-            Sex = request.Sex,
-            Color = request.Color,
-            Description = request.Description,
-            Location = request.Location,
+            Name = name.ToString(),
+            Age = age,
+            Sex = sex.ToString(),
+            Color = color.ToString(),
+            Description = description.ToString(),
+            Location = location.ToString(),
+            ImageUrl = imageUrl,
             UserId = userId
         };
 
@@ -59,11 +91,20 @@ public class CatsController : ControllerBase
 
     [HttpGet]
     [AllowAnonymous]
-    public async Task<IActionResult> GetCats()
+    public async Task<IActionResult> GetCats([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
     {
+        if (page < 1) page = 1;
+        if (pageSize < 1 || pageSize > 100) pageSize = 10;
+
+        var skip = (page - 1) * pageSize;
+
+        var totalCount = await _context.Cats.CountAsync();
         var cats = await _context.Cats
             .AsNoTracking()
             .Include(cat => cat.User)
+            .OrderByDescending(c => c.Id)
+            .Skip(skip)
+            .Take(pageSize)
             .Select(cat => new
             {
                 cat.Id,
@@ -74,6 +115,7 @@ public class CatsController : ControllerBase
                 cat.Description,
                 cat.Location,
                 cat.Status,
+                cat.ImageUrl,
                 Owner = new
                 {
                     cat.User.Id,
@@ -83,7 +125,14 @@ public class CatsController : ControllerBase
             })
             .ToListAsync();
 
-        return Ok(cats);
+        return Ok(new
+        {
+            data = cats,
+            totalCount,
+            page,
+            pageSize,
+            totalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
+        });
     }
 
     [HttpGet("{id:int}")]

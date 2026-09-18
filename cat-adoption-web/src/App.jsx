@@ -11,6 +11,9 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [formData, setFormData] = useState({})
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [imageFile, setImageFile] = useState(null)
 
   useEffect(() => {
     if (token && user) {
@@ -101,13 +104,15 @@ export default function App() {
   }
 
   // CATS FUNCTIONS
-  const loadCats = async () => {
+  const loadCats = async (page = 1) => {
     setLoading(true)
     try {
-      const response = await fetch(`${API_URL}/cats`)
+      const response = await fetch(`${API_URL}/cats?page=${page}&pageSize=10`)
       if (response.ok) {
         const data = await response.json()
-        setCats(data)
+        setCats(data.data)
+        setTotalPages(data.totalPages)
+        setCurrentPage(page)
       }
     } catch (err) {
       setError('Error loading cats: ' + err.message)
@@ -119,26 +124,30 @@ export default function App() {
     e.preventDefault()
     setError('')
     try {
+      const formDataToSend = new FormData()
+      formDataToSend.append('name', formData.catName)
+      formDataToSend.append('age', parseInt(formData.catAge))
+      formDataToSend.append('sex', formData.catSex)
+      formDataToSend.append('color', formData.catColor)
+      formDataToSend.append('description', formData.catDescription)
+      formDataToSend.append('location', formData.catLocation)
+      if (imageFile) {
+        formDataToSend.append('image', imageFile)
+      }
+
       const response = await fetch(`${API_URL}/cats`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          name: formData.catName,
-          age: parseInt(formData.catAge),
-          sex: formData.catSex,
-          color: formData.catColor,
-          description: formData.catDescription,
-          location: formData.catLocation,
-        }),
+        body: formDataToSend,
       })
       const data = await response.json()
       if (response.ok) {
         alert('Cat listing created successfully!')
         setView('cats')
         setFormData({})
+        setImageFile(null)
         loadCats()
       } else {
         setError(data.message || 'Failed to create listing')
@@ -267,29 +276,38 @@ export default function App() {
               <h3>No cats yet</h3>
               <p>Create the first listing!</p>
             </div>
-          ) : (
-            <div className="cats-grid">
-              {cats.map((cat) => (
-                <div key={cat.id} className="cat-card">
-                  <div className="cat-image-placeholder">🐱</div>
-                  <div className="cat-content">
-                    <h3>{cat.name}</h3>
-                    <div className="cat-info">Age: {cat.age} years</div>
-                    <div className="cat-info">Sex: {cat.sex}</div>
-                    <div className="cat-info">Color: {cat.color}</div>
-                    <div className="cat-info">Location: {cat.location}</div>
-                    <div className="cat-info">Description: {cat.description}</div>
-                    <div className="cat-owner">By: {cat.owner.firstName} {cat.owner.lastName}</div>
-                    {user && user.id === cat.owner.id && (
-                      <div className="cat-actions">
-                        <button className="btn-delete" onClick={() => handleDeleteCat(cat.id)}>Delete</button>
-                      </div>
-                    )}
+           ) : (
+            <div>
+              <div className="cats-grid">
+                {cats.map((cat) => (
+                  <div key={cat.id} className="cat-card">
+                    <div className="cat-image-placeholder" style={{backgroundImage: cat.imageUrl ? `url(${cat.imageUrl})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center'}}>
+                      {!cat.imageUrl && '🐱'}
+                    </div>
+                    <div className="cat-content">
+                      <h3>{cat.name}</h3>
+                      <div className="cat-info">Age: {cat.age} years</div>
+                      <div className="cat-info">Sex: {cat.sex}</div>
+                      <div className="cat-info">Color: {cat.color}</div>
+                      <div className="cat-info">Location: {cat.location}</div>
+                      <div className="cat-info">Description: {cat.description}</div>
+                      <div className="cat-owner">By: {cat.owner.firstName} {cat.owner.lastName}</div>
+                      {user && user.id === cat.owner.id && (
+                        <div className="cat-actions">
+                          <button className="btn-delete" onClick={() => handleDeleteCat(cat.id)}>Delete</button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+              <div style={{display: 'flex', justifyContent: 'center', gap: '10px', marginTop: '30px'}}>
+                <button onClick={() => loadCats(currentPage - 1)} disabled={currentPage === 1} style={{padding: '10px 20px', background: currentPage === 1 ? '#ccc' : '#667eea', color: 'white', border: 'none', borderRadius: '5px', cursor: currentPage === 1 ? 'not-allowed' : 'pointer'}}>← Previous</button>
+                <span style={{color: 'white', padding: '10px 20px'}}>Page {currentPage} of {totalPages}</span>
+                <button onClick={() => loadCats(currentPage + 1)} disabled={currentPage === totalPages} style={{padding: '10px 20px', background: currentPage === totalPages ? '#ccc' : '#667eea', color: 'white', border: 'none', borderRadius: '5px', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer'}}>Next →</button>
+              </div>
             </div>
-          )}
+           )}
         </div>
       )}
 
@@ -325,6 +343,10 @@ export default function App() {
             <div className="form-group">
               <label>Location</label>
               <input type="text" name="catLocation" value={formData.catLocation || ''} onChange={handleInputChange} required />
+            </div>
+            <div className="form-group">
+              <label>Cat Photo (optional)</label>
+              <input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files?.[0] || null)} />
             </div>
             <input type="submit" value="Create Listing" />
           </form>

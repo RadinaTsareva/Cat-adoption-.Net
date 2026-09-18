@@ -18,6 +18,8 @@ public class Cat
 
     public string Status { get; set; } = "Available";
 
+    public string? ImageUrl { get; set; }
+
     public int UserId { get; set; }
 
     public User User { get; set; } = null!;
