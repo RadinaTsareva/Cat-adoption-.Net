@@ -6,7 +6,7 @@ const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || 'http://localhost:51
 export default defineConfig({
   plugins: [react()],
   define: {
-    __VITE_API_BACKEND__: JSON.stringify(process.env.VITE_API_URL || ''),
+    __VITE_API_BACKEND__: JSON.stringify(process.env.VITE_API_URL ? `${process.env.VITE_API_URL}/api` : ''),
   },
   server: {
     host: '0.0.0.0',

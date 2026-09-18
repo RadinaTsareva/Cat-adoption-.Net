@@ -4,7 +4,7 @@ window.__APP_CONFIG__ = {
   API_URL: (function() {
     // If on Vercel production domain, use Railway backend
     if (window.location.hostname.includes('vercel.app')) {
-      return 'https://cat-adoption-net-production.up.railway.app'
+      return 'https://cat-adoption-net-production.up.railway.app/api'
     }
     // Otherwise use local proxy
     return '/api'
