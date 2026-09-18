@@ -41,7 +41,7 @@ export default function App() {
       if (response.ok) {
         setToken(data.token)
         // Декодирай JWT токена за userId (или съхрани от регистрация)
-        const userData = { email: formData.loginEmail, id: data.userId || null }
+        const userData = { email: formData.loginEmail, id: data.userId }
         setUser(userData)
         localStorage.setItem('token', data.token)
         localStorage.setItem('user', JSON.stringify(userData))
