@@ -16,8 +16,8 @@ services:
 
   api:
     build:
-      context: .
-      dockerfile: CatAdoption.Api/Dockerfile
+      context: ./CatAdoption.Api
+      dockerfile: Dockerfile
     container_name: cat-adoption-api
     environment:
       ASPNETCORE_ENVIRONMENT: Development
