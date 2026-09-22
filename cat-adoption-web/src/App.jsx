@@ -138,6 +138,7 @@ export default function App() {
   const isAdmin = user?.role === 'admin'
   const canCreateListings = isAdmin || user?.role === 'care-giver'
   const canUseChat = user?.role === 'care-giver' || user?.role === 'pet-adopter'
+  const unreadChatCount = chatConversations.reduce((total, conversation) => total + (conversation.unreadCount || 0), 0)
   const hasCatFilters = Object.values(catFilters).some((value) => value && value.trim())
 
   useEffect(() => {
@@ -153,6 +154,11 @@ export default function App() {
       const currentUser = await loadCurrentUser(token)
       if (!currentUser) {
         handleLogout()
+        return
+      }
+
+      if (currentUser.role === 'care-giver' || currentUser.role === 'pet-adopter') {
+        await loadChatData()
       }
     }
 
@@ -170,6 +176,28 @@ export default function App() {
       loadChatData()
     }
   }, [view, token, canUseChat])
+
+  useEffect(() => {
+    if (!token || !canUseChat) {
+      return undefined
+    }
+
+    const refreshChatSummaries = async () => {
+      await loadChatData()
+    }
+
+    refreshChatSummaries()
+
+    const intervalId = window.setInterval(refreshChatSummaries, 30000)
+    const handleFocus = () => refreshChatSummaries()
+
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [token, canUseChat])
 
   // AUTH FUNCTIONS
   const loadCurrentUser = async (accessToken = token) => {
@@ -225,6 +253,9 @@ export default function App() {
         if (currentUser) {
           setView('cats')
           setFormData({})
+          if (currentUser.role === 'care-giver' || currentUser.role === 'pet-adopter') {
+            await loadChatData()
+          }
           loadCats()
         } else {
           handleLogout()
@@ -274,6 +305,9 @@ export default function App() {
           }
           setFormData({})
           setView('cats')
+          if (currentUser.role === 'care-giver' || currentUser.role === 'pet-adopter') {
+            await loadChatData()
+          }
           loadCats()
         } else {
           alert('Registration successful! Please login.')
@@ -689,7 +723,32 @@ export default function App() {
         <nav>
           <>
             <button className="btn-primary" onClick={() => setView('cats')}>🐱 Cats</button>
-            {token && canUseChat && <button className="btn-primary" onClick={() => setView('chat')}>💬 Chat</button>}
+            {token && canUseChat && (
+              <button className="btn-primary" onClick={() => setView('chat')} style={{ position: 'relative' }}>
+                💬 Chat
+                {unreadChatCount > 0 && (
+                  <span
+                    style={{
+                      marginLeft: '8px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minWidth: '22px',
+                      height: '22px',
+                      padding: '0 6px',
+                      borderRadius: '999px',
+                      background: '#e74c3c',
+                      color: 'white',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      lineHeight: '1'
+                    }}
+                  >
+                    {unreadChatCount > 99 ? '99+' : unreadChatCount}
+                  </span>
+                )}
+              </button>
+            )}
             {token && user ? (
               <>
                 {canCreateListings && <button className="btn-primary" onClick={() => { resetCatForm(); setView('newCat') }}>+ New Listing</button>}
