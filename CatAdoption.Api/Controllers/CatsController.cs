@@ -158,7 +158,8 @@ public class CatsController : ControllerBase
                 {
                     cat.User.Id,
                     cat.User.FirstName,
-                    cat.User.LastName
+                    cat.User.LastName,
+                    cat.User.Role
                 }
             })
             .ToListAsync();
@@ -202,7 +203,8 @@ public class CatsController : ControllerBase
             {
                 cat.User.Id,
                 cat.User.FirstName,
-                cat.User.LastName
+                cat.User.LastName,
+                cat.User.Role
             }
         });
     }

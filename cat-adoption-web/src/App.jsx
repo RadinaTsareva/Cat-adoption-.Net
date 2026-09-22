@@ -105,8 +105,13 @@ const getCatStatusLabel = (status) => {
   }
 }
 
+const canUsersChat = (roleA, roleB) => (
+  (roleA === 'care-giver' && roleB === 'pet-adopter') ||
+  (roleA === 'pet-adopter' && roleB === 'care-giver')
+)
+
 export default function App() {
-  const [view, setView] = useState('cats') // login, register, cats, newCat, admin
+  const [view, setView] = useState('cats') // login, register, cats, newCat, admin, chat
   const [token, setToken] = useState(localStorage.getItem('token'))
   const [user, setUser] = useState(localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')) : null)
   const [cats, setCats] = useState([])
@@ -121,8 +126,18 @@ export default function App() {
   const [adminUsers, setAdminUsers] = useState([])
   const [adminLoading, setAdminLoading] = useState(false)
   const [adminError, setAdminError] = useState('')
+  const [chatConversations, setChatConversations] = useState([])
+  const [chatContacts, setChatContacts] = useState([])
+  const [chatMessages, setChatMessages] = useState([])
+  const [chatLoading, setChatLoading] = useState(false)
+  const [chatSending, setChatSending] = useState(false)
+  const [chatError, setChatError] = useState('')
+  const [chatTab, setChatTab] = useState('conversations')
+  const [chatDraft, setChatDraft] = useState('')
+  const [activeChat, setActiveChat] = useState({ conversationId: null, receiver: null })
   const isAdmin = user?.role === 'admin'
   const canCreateListings = isAdmin || user?.role === 'care-giver'
+  const canUseChat = user?.role === 'care-giver' || user?.role === 'pet-adopter'
   const hasCatFilters = Object.values(catFilters).some((value) => value && value.trim())
 
   useEffect(() => {
@@ -149,6 +164,12 @@ export default function App() {
       loadAdminUsers()
     }
   }, [view, token, isAdmin])
+
+  useEffect(() => {
+    if (view === 'chat' && token && canUseChat) {
+      loadChatData()
+    }
+  }, [view, token, canUseChat])
 
   // AUTH FUNCTIONS
   const loadCurrentUser = async (accessToken = token) => {
@@ -375,6 +396,147 @@ export default function App() {
     }
   }
 
+  const loadChatData = async () => {
+    if (!token || !canUseChat) return
+
+    setChatLoading(true)
+    setChatError('')
+
+    try {
+      const [conversationsResponse, contactsResponse] = await Promise.all([
+        fetch(`${API_URL}/messages/conversations`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${API_URL}/messages/contacts`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ])
+
+      if (!conversationsResponse.ok || !contactsResponse.ok) {
+        const conversationsError = await conversationsResponse.json().catch(() => ({}))
+        const contactsError = await contactsResponse.json().catch(() => ({}))
+        setChatError(conversationsError.message || contactsError.message || 'Failed to load chat data')
+        setChatConversations([])
+        setChatContacts([])
+        return { conversations: [], contacts: [] }
+      }
+
+      const conversationsData = await conversationsResponse.json()
+      const contactsData = await contactsResponse.json()
+
+      setChatConversations(conversationsData || [])
+      setChatContacts(contactsData || [])
+      return { conversations: conversationsData || [], contacts: contactsData || [] }
+    } catch (err) {
+      setChatError('Error loading chat data: ' + err.message)
+      setChatConversations([])
+      setChatContacts([])
+      return { conversations: [], contacts: [] }
+    } finally {
+      setChatLoading(false)
+    }
+  }
+
+  const loadChatConversation = async (conversationId) => {
+    if (!token || !conversationId) return
+
+    setChatLoading(true)
+    setChatError('')
+
+    try {
+      const response = await fetch(`${API_URL}/messages/conversations/${conversationId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setChatError(data.message || 'Failed to load conversation')
+        setChatMessages([])
+        return
+      }
+
+      setActiveChat({ conversationId: data.conversationId, receiver: data.otherUser || null })
+      setChatMessages(data.messages || [])
+      await loadChatData()
+    } catch (err) {
+      setChatError('Error loading conversation: ' + err.message)
+      setChatMessages([])
+    } finally {
+      setChatLoading(false)
+    }
+  }
+
+  const openConversation = async (conversation) => {
+    if (!conversation) return
+
+    setChatTab('conversations')
+    setChatDraft('')
+    await loadChatConversation(conversation.conversationId)
+  }
+
+  const openContactChat = async (contact) => {
+    if (!contact) return
+
+    setChatTab('contacts')
+    setChatDraft('')
+
+    let conversationsToSearch = chatConversations
+    if (chatConversations.length === 0) {
+      const loadedData = await loadChatData()
+      conversationsToSearch = loadedData?.conversations || []
+    }
+
+    const existingConversation = conversationsToSearch.find(
+      (conversation) => conversation.otherUserId === contact.id
+    )
+
+    if (existingConversation) {
+      await loadChatConversation(existingConversation.conversationId)
+      return
+    }
+
+    setActiveChat({ conversationId: null, receiver: contact })
+    setChatMessages([])
+  }
+
+  const handleSendChatMessage = async (e) => {
+    e.preventDefault()
+
+    if (!activeChat.receiver?.id || !chatDraft.trim()) {
+      return
+    }
+
+    setChatSending(true)
+    setChatError('')
+
+    try {
+      const response = await fetch(`${API_URL}/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          receiverId: activeChat.receiver.id,
+          content: chatDraft,
+        }),
+      })
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setChatError(data.message || 'Failed to send message')
+        return
+      }
+
+      setChatDraft('')
+      await loadChatConversation(data.conversationId)
+    } catch (err) {
+      setChatError('Error sending message: ' + err.message)
+    } finally {
+      setChatSending(false)
+    }
+  }
+
   const handleUpdateUserRole = async (userId, role) => {
     setAdminError('')
     try {
@@ -502,6 +664,12 @@ export default function App() {
     setToken(null)
     setUser(null)
     setCats([])
+    setChatConversations([])
+    setChatContacts([])
+    setChatMessages([])
+    setChatError('')
+    setChatDraft('')
+    setActiveChat({ conversationId: null, receiver: null })
     localStorage.removeItem('token')
     localStorage.removeItem('user')
     setView('cats')
@@ -521,6 +689,7 @@ export default function App() {
         <nav>
           <>
             <button className="btn-primary" onClick={() => setView('cats')}>🐱 Cats</button>
+            {token && canUseChat && <button className="btn-primary" onClick={() => setView('chat')}>💬 Chat</button>}
             {token && user ? (
               <>
                 {canCreateListings && <button className="btn-primary" onClick={() => { resetCatForm(); setView('newCat') }}>+ New Listing</button>}
@@ -673,6 +842,11 @@ export default function App() {
                           <button className="btn-delete" onClick={() => handleDeleteCat(cat.id)}>Delete</button>
                         </div>
                       )}
+                      {token && user && cat.owner?.id && user.id !== cat.owner.id && canUsersChat(user.role, cat.owner.role) && (
+                        <div className="cat-actions">
+                          <button className="btn-primary" onClick={() => { setView('chat'); openContactChat(cat.owner) }}>💬 Message owner</button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -823,6 +997,144 @@ export default function App() {
                 {adminUsers.length === 0 && <div style={{ padding: '15px', color: '#666' }}>No users found.</div>}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* CHAT VIEW */}
+      {view === 'chat' && token && canUseChat && (
+        <div className="auth-container" style={{ maxWidth: '1100px' }}>
+          <h2>💬 Chat</h2>
+          <p className="admin-description" style={{ marginBottom: '15px' }}>
+            Чатът е достъпен само между care-giver и pet-adopter.
+          </p>
+
+          {chatError && <div className="alert error" style={{ marginBottom: '15px' }}>{chatError}</div>}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '20px', alignItems: 'stretch' }}>
+            <div style={{ background: 'rgba(255,255,255,0.95)', borderRadius: '12px', padding: '15px', minHeight: '620px' }}>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}>
+                <button className={chatTab === 'conversations' ? 'btn-primary' : 'btn-secondary'} onClick={() => setChatTab('conversations')} style={{ flex: 1 }}>
+                  Разговори
+                </button>
+                <button className={chatTab === 'contacts' ? 'btn-primary' : 'btn-secondary'} onClick={() => setChatTab('contacts')} style={{ flex: 1 }}>
+                  Контакти
+                </button>
+              </div>
+
+              {chatLoading ? (
+                <div className="loading" style={{ color: '#333' }}>Loading chat...</div>
+              ) : chatTab === 'conversations' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {chatConversations.length === 0 ? (
+                    <div style={{ color: '#666' }}>Няма разговори.</div>
+                  ) : chatConversations.map((conversation) => (
+                    <button
+                      key={conversation.conversationId}
+                      onClick={() => openConversation(conversation)}
+                      style={{
+                        textAlign: 'left',
+                        padding: '12px',
+                        borderRadius: '10px',
+                        border: activeChat.conversationId === conversation.conversationId ? '2px solid #667eea' : '1px solid #e5e5e5',
+                        background: activeChat.conversationId === conversation.conversationId ? '#f3f6ff' : 'white',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+                        <strong>{conversation.otherUserFirstName} {conversation.otherUserLastName}</strong>
+                        {conversation.unreadCount > 0 ? <span className="role-badge">{conversation.unreadCount}</span> : null}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#666' }}>{conversation.otherUserRole}</div>
+                      <div style={{ marginTop: '6px', color: '#444', fontSize: '14px' }}>
+                        {conversation.lastMessageContent || 'Без съобщения'}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {chatContacts.length === 0 ? (
+                    <div style={{ color: '#666' }}>Няма налични контакти.</div>
+                  ) : chatContacts.map((contact) => {
+                    const existingConversation = chatConversations.find((conversation) => conversation.otherUserId === contact.id)
+                    return (
+                      <button
+                        key={contact.id}
+                        onClick={() => openContactChat(contact)}
+                        style={{
+                          textAlign: 'left',
+                          padding: '12px',
+                          borderRadius: '10px',
+                          border: existingConversation ? '2px solid #667eea' : '1px solid #e5e5e5',
+                          background: existingConversation ? '#f3f6ff' : 'white',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <strong>{contact.firstName} {contact.lastName}</strong>
+                        <div style={{ fontSize: '12px', color: '#666' }}>{contact.email}</div>
+                        <div style={{ fontSize: '12px', color: '#666' }}>{contact.role}{contact.city ? ` · ${contact.city}` : ''}</div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div style={{ background: 'rgba(255,255,255,0.95)', borderRadius: '12px', padding: '15px', minHeight: '620px', display: 'flex', flexDirection: 'column' }}>
+              {activeChat.receiver ? (
+                <>
+                  <div style={{ borderBottom: '1px solid #eee', paddingBottom: '12px', marginBottom: '12px' }}>
+                    <h3 style={{ margin: 0 }}>{activeChat.receiver.firstName} {activeChat.receiver.lastName}</h3>
+                    <div style={{ color: '#666', fontSize: '14px' }}>{activeChat.receiver.role}{activeChat.receiver.city ? ` · ${activeChat.receiver.city}` : ''}</div>
+                  </div>
+
+                  <div style={{ flex: 1, overflowY: 'auto', paddingRight: '4px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {chatMessages.length === 0 ? (
+                      <div style={{ color: '#666', padding: '20px 0' }}>Започни разговора с първо съобщение.</div>
+                    ) : chatMessages.map((message) => {
+                      const isMine = message.senderId === user?.id
+                      return (
+                        <div key={message.id} style={{ display: 'flex', justifyContent: isMine ? 'flex-end' : 'flex-start' }}>
+                          <div style={{
+                            maxWidth: '75%',
+                            padding: '12px 14px',
+                            borderRadius: '14px',
+                            background: isMine ? '#667eea' : '#f1f1f1',
+                            color: isMine ? 'white' : '#222',
+                            whiteSpace: 'pre-wrap'
+                          }}>
+                            <div>{message.content}</div>
+                            <div style={{ fontSize: '11px', opacity: 0.75, marginTop: '6px' }}>
+                              {new Date(message.sentAt).toLocaleString()}
+                              {isMine ? (message.isRead ? ' · read' : ' · sent') : ''}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <form onSubmit={handleSendChatMessage} style={{ marginTop: '15px' }}>
+                    <div className="form-group" style={{ marginBottom: '10px' }}>
+                      <label>Message</label>
+                      <textarea
+                        rows="4"
+                        value={chatDraft}
+                        onChange={(e) => setChatDraft(e.target.value)}
+                        placeholder="Напиши съобщение..."
+                        required
+                      />
+                    </div>
+                    <input type="submit" value={chatSending ? 'Sending...' : 'Send'} disabled={chatSending} />
+                  </form>
+                </>
+              ) : (
+                <div style={{ color: '#666', marginTop: '20px' }}>
+                  Избери разговор или контакт отляво, за да започнеш чат.
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
