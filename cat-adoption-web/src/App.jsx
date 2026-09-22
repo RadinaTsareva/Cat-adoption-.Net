@@ -719,54 +719,90 @@ export default function App() {
   return (
     <div className="container">
       <header>
-        <h1>🐱 Cat Adoption</h1>
-        <nav>
-          <>
-            <button className="btn-primary" onClick={() => setView('cats')}>🐱 Cats</button>
-            {token && canUseChat && (
-              <button className="btn-primary" onClick={() => setView('chat')} style={{ position: 'relative' }}>
-                💬 Chat
-                {unreadChatCount > 0 && (
-                  <span
-                    style={{
-                      marginLeft: '8px',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      minWidth: '22px',
-                      height: '22px',
-                      padding: '0 6px',
-                      borderRadius: '999px',
-                      background: '#e74c3c',
-                      color: 'white',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      lineHeight: '1'
-                    }}
-                  >
-                    {unreadChatCount > 99 ? '99+' : unreadChatCount}
+        <div className="header-top">
+          <h1>🐱 Cat Adoption</h1>
+          <nav>
+            <>
+              <button className="btn-primary" onClick={() => setView('cats')}>🐱 Cats</button>
+              {token && canUseChat && (
+                <button className="btn-primary" onClick={() => setView('chat')} style={{ position: 'relative' }}>
+                  💬 Chat
+                  {unreadChatCount > 0 && (
+                    <span
+                      style={{
+                        marginLeft: '8px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        minWidth: '22px',
+                        height: '22px',
+                        padding: '0 6px',
+                        borderRadius: '999px',
+                        background: '#e74c3c',
+                        color: 'white',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        lineHeight: '1'
+                      }}
+                    >
+                      {unreadChatCount > 99 ? '99+' : unreadChatCount}
+                    </span>
+                  )}
+                </button>
+              )}
+              {token && user ? (
+                <>
+                  {canCreateListings && <button className="btn-primary" onClick={() => { resetCatForm(); setView('newCat') }}>+ New Listing</button>}
+                  {isAdmin && <button className="btn-primary" onClick={() => setView('admin')}>🛠 Admin Panel</button>}
+                  <span style={{ color: '#666', padding: '10px' }}>
+                    Hi, {user.firstName || user.email}!
+                    <span className="role-badge">{user.role}</span>
                   </span>
-                )}
-              </button>
-            )}
-            {token && user ? (
-              <>
-                {canCreateListings && <button className="btn-primary" onClick={() => { resetCatForm(); setView('newCat') }}>+ New Listing</button>}
-                {isAdmin && <button className="btn-primary" onClick={() => setView('admin')}>🛠 Admin Panel</button>}
-                <span style={{ color: '#666', padding: '10px' }}>
-                  Hi, {user.firstName || user.email}!
-                  <span className="role-badge">{user.role}</span>
-                </span>
-                <button className="btn-logout" onClick={handleLogout}>Logout</button>
-              </>
-            ) : (
-              <>
-                <button className="btn-primary" onClick={() => setView('login')}>Login</button>
-                <button className="btn-primary" onClick={() => setView('register')}>Register</button>
-              </>
-            )}
-          </>
-        </nav>
+                  <button className="btn-logout" onClick={handleLogout}>Logout</button>
+                </>
+              ) : (
+                <>
+                  <button className="btn-primary" onClick={() => setView('login')}>Login</button>
+                  <button className="btn-primary" onClick={() => setView('register')}>Register</button>
+                </>
+              )}
+            </>
+          </nav>
+        </div>
+
+        <form className="cat-filters header-filters" onSubmit={handleApplyCatFilters}>
+          <div className="cat-filters__grid">
+            <div className="form-group">
+              <label className="sr-only">Sex</label>
+              <select name="sex" value={catFilters.sex} onChange={handleCatFilterChange} aria-label="Sex">
+                <option value="">Any sex</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="sr-only">Color</label>
+              <input type="text" name="color" value={catFilters.color} onChange={handleCatFilterChange} placeholder="Color" aria-label="Color" />
+            </div>
+            <div className="form-group">
+              <label className="sr-only">Status</label>
+              <select name="status" value={catFilters.status} onChange={handleCatFilterChange} aria-label="Status">
+                <option value="">Any status</option>
+                <option value={CAT_STATUSES.waitingAdoption}>Waiting adoption</option>
+                <option value={CAT_STATUSES.inProgress}>In process of adoption</option>
+                <option value={CAT_STATUSES.adopted}>Adopted</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="sr-only">City</label>
+              <input type="text" name="city" value={catFilters.city} onChange={handleCatFilterChange} placeholder="City" aria-label="City" />
+            </div>
+          </div>
+          <div className="cat-filters__actions">
+            <button type="submit" className="btn-primary">Search</button>
+            <button type="button" className="btn-secondary" onClick={handleResetCatFilters}>Reset</button>
+          </div>
+        </form>
       </header>
 
       {error && <div className="alert error">{error}</div>}
@@ -834,43 +870,6 @@ export default function App() {
       {/* CATS LIST VIEW */}
       {view === 'cats' && (
         <div className="cats-section">
-          <div className="section-header">
-            <h2>🐱 All Cats</h2>
-            {canCreateListings && <button className="btn-primary" onClick={() => { resetCatForm(); setView('newCat') }}>+ New Listing</button>}
-          </div>
-          <form className="cat-filters" onSubmit={handleApplyCatFilters}>
-            <div className="cat-filters__grid">
-              <div className="form-group">
-                <label>Sex</label>
-                <select name="sex" value={catFilters.sex} onChange={handleCatFilterChange}>
-                  <option value="">All</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Color</label>
-                <input type="text" name="color" value={catFilters.color} onChange={handleCatFilterChange} placeholder="e.g. Black" />
-              </div>
-              <div className="form-group">
-                <label>Status</label>
-                <select name="status" value={catFilters.status} onChange={handleCatFilterChange}>
-                  <option value="">All</option>
-                  <option value={CAT_STATUSES.waitingAdoption}>Waiting adoption</option>
-                  <option value={CAT_STATUSES.inProgress}>In process of adoption</option>
-                  <option value={CAT_STATUSES.adopted}>Adopted</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>City</label>
-                <input type="text" name="city" value={catFilters.city} onChange={handleCatFilterChange} placeholder="e.g. Sofia" />
-              </div>
-            </div>
-            <div className="cat-filters__actions">
-              <button type="submit" className="btn-primary">Search</button>
-              <button type="button" className="btn-secondary" onClick={handleResetCatFilters}>Reset</button>
-            </div>
-          </form>
           {loading ? (
             <div className="loading">Loading...</div>
           ) : cats.length === 0 ? (
